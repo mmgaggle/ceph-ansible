@@ -344,8 +344,8 @@ cephfs_data: cephfs_data # name of the data pool for a given filesystem
 cephfs_metadata: cephfs_metadata # name of the metadata pool for a given filesystem
 
 cephfs_pools:
-  - { name: "{{ cephfs_data }}", pgs: "{{ osd_pool_default_pg_num }}", size: "{{ osd_pool_default_size }}" }
-  - { name: "{{ cephfs_metadata }}", pgs: "{{ osd_pool_default_pg_num }}", size: "{{ osd_pool_default_size }}" }
+  - { name: "{{ cephfs_data }}", pgs: "{{ osd_pool_default_pg_num }}", size: "{{ osd_pool_default_size }}", min_size: "{{ osd_pool_default_min_size }}"}
+  - { name: "{{ cephfs_metadata }}", pgs: "{{ osd_pool_default_pg_num }}", size: "{{ osd_pool_default_size }}", min_size: "{{ osd_pool_default_min_size }}"}
 
 ## OSD options
 #
@@ -361,6 +361,9 @@ osd_mkfs_type: xfs
 osd_mkfs_options_xfs: -f -i size=2048
 osd_mount_options_xfs: noatime,largeio,inode64,swalloc
 osd_objectstore: bluestore
+
+# Any device containing these patterns in their path will be excluded.
+osd_auto_discovery_exclude: "dm-*|loop*"
 
 # xattrs. by default, 'filestore xattr use omap' is set to 'true' if
 # 'osd_mkfs_type' is set to 'ext4'; otherwise it isn't set. This can
@@ -544,7 +547,7 @@ ceph_docker_enable_centos_extra_repo: false
 ceph_docker_on_openstack: false
 containerized_deployment: False
 container_binary:
-
+timeout_command: "{{ 'timeout --foreground -s KILL ' ~ docker_pull_timeout if (docker_pull_timeout != '0') and (ceph_docker_dev_image is undefined or not ceph_docker_dev_image) else '' }}"
 
 
 # this is only here for usage with the rolling_update.yml playbook
@@ -572,6 +575,7 @@ openstack_glance_pool:
   expected_num_objects: ""
   application: "rbd"
   size: "{{ osd_pool_default_size }}"
+  min_size: "{{ osd_pool_default_min_size }}"
 openstack_cinder_pool:
   name: "volumes"
   pg_num: "{{ osd_pool_default_pg_num }}"
@@ -582,6 +586,7 @@ openstack_cinder_pool:
   expected_num_objects: ""
   application: "rbd"
   size: "{{ osd_pool_default_size }}"
+  min_size: "{{ osd_pool_default_min_size }}"
 openstack_nova_pool:
   name: "vms"
   pg_num: "{{ osd_pool_default_pg_num }}"
@@ -592,6 +597,7 @@ openstack_nova_pool:
   expected_num_objects: ""
   application: "rbd"
   size: "{{ osd_pool_default_size }}"
+  min_size: "{{ osd_pool_default_min_size }}"
 openstack_cinder_backup_pool:
   name: "backups"
   pg_num: "{{ osd_pool_default_pg_num }}"
@@ -602,6 +608,7 @@ openstack_cinder_backup_pool:
   expected_num_objects: ""
   application: "rbd"
   size: "{{ osd_pool_default_size }}"
+  min_size: "{{ osd_pool_default_min_size }}"
 openstack_gnocchi_pool:
   name: "metrics"
   pg_num: "{{ osd_pool_default_pg_num }}"
@@ -612,6 +619,7 @@ openstack_gnocchi_pool:
   expected_num_objects: ""
   application: "rbd"
   size: "{{ osd_pool_default_size }}"
+  min_size: "{{ osd_pool_default_min_size }}"
 openstack_cephfs_data_pool:
   name: "manila_data"
   pg_num: "{{ osd_pool_default_pg_num }}"
@@ -622,6 +630,7 @@ openstack_cephfs_data_pool:
   expected_num_objects: ""
   application: "rbd"
   size: "{{ osd_pool_default_size }}"
+  min_size: "{{ osd_pool_default_min_size }}"
 openstack_cephfs_metadata_pool:
   name: "manila_metadata"
   pg_num: "{{ osd_pool_default_pg_num }}"
@@ -632,6 +641,7 @@ openstack_cephfs_metadata_pool:
   expected_num_objects: ""
   application: "rbd"
   size: "{{ osd_pool_default_size }}"
+  min_size: "{{ osd_pool_default_min_size }}"
 
 openstack_pools:
   - "{{ openstack_glance_pool }}"

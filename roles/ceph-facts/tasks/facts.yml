@@ -19,7 +19,7 @@
 
 - name: set_fact container_binary
   set_fact:
-    container_binary: "{{ 'podman' if is_podman and ansible_distribution == 'Fedora' else 'docker' }}"
+    container_binary: "{{ 'podman' if (podman_binary.stat.exists and ansible_distribution == 'Fedora') or (ansible_os_family == 'RedHat' and ansible_distribution_major_version == '8') else 'docker' }}"
   when: containerized_deployment
 
 # Set ceph_release to ceph_stable by default
@@ -51,7 +51,7 @@
 # because it blindly picks a mon, which may be down because
 # of the rolling update
 - name: is ceph running already?
-  command: "timeout 5 {{ docker_exec_cmd }} ceph --cluster {{ cluster }} -s -f json"
+  command: "{{ timeout_command }} {{ docker_exec_cmd }} ceph --cluster {{ cluster }} -s -f json"
   changed_when: false
   failed_when: false
   check_mode: no
@@ -173,6 +173,19 @@
     - not osd_auto_discovery|default(False)
     - osd_scenario|default('dummy') != 'lvm'
 
+- name: set_fact devices generate device list when osd_auto_discovery
+  set_fact:
+    devices: "{{ devices | default([]) + [ item.key | regex_replace('^', '/dev/') ] }}"
+  with_dict: "{{ ansible_devices }}"
+  when:
+    - osd_auto_discovery|default(False)
+    - ansible_devices is defined
+    - item.value.removable == "0"
+    - item.value.sectors != "0"
+    - item.value.partitions|count == 0
+    - item.value.holders|count == 0
+    - item.key is not match osd_auto_discovery_exclude
+
 - name: set_fact ceph_uid for debian based system - non container
   set_fact:
     ceph_uid: 64045
@@ -199,7 +212,8 @@
     ceph_uid: 167
   when:
     - containerized_deployment
-    - ceph_docker_image_tag | string is search("latest") or ceph_docker_image_tag | string is search("centos") or ceph_docker_image_tag | string is search("fedora")
+    - (ceph_docker_image_tag | string is search("latest") or ceph_docker_image_tag | string is search("centos") or ceph_docker_image_tag | string is search("fedora")
+      or (ansible_distribution == 'RedHat'))
 
 - name: set_fact ceph_uid for red hat
   set_fact:
@@ -231,6 +245,10 @@
   set_fact:
     osd_pool_default_size: "{{ ceph_conf_overrides.get('global', {}).get('osd_pool_default_size', ceph_osd_pool_default_size) }}"
 
+- name: set_fact osd_pool_default_min_size
+  set_fact:
+    osd_pool_default_min_size: "{{ ceph_conf_overrides.get('global', {}).get('osd_pool_default_min_size', ceph_osd_pool_default_min_size) }}"
+
 - name: import_tasks set_monitor_address.yml
   import_tasks: set_monitor_address.yml
 
@@ -245,3 +263,15 @@
   with_sequence: start=0 end={{ radosgw_num_instances|int - 1 }}
   when:
     - inventory_hostname in groups.get(rgw_group_name, [])
+
+- name: set ntp service name depending on OS family
+  block:
+  - name: set ntp service name for Debian family
+    set_fact:
+      ntp_service_name: ntp
+    when: ansible_os_family == 'Debian'
+
+  - name: set ntp service name for Red Hat family
+    set_fact:
+      ntp_service_name: ntpd
+    when: ansible_os_family in ['RedHat', 'Suse']
