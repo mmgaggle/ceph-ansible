@@ -115,32 +115,39 @@
         - inventory_hostname == groups[mon_group_name][0]
         - containerized_deployment
 
+    # NOTE: we mask the service so the RPM can't restart it
+    # after the package gets upgraded
     - name: stop ceph mon - shortname
       systemd:
         name: ceph-mon@{{ ansible_hostname }}
         state: stopped
-        enabled: yes
+        enabled: no
+        masked: yes
       ignore_errors: True
       when:
         - not containerized_deployment
 
+    # NOTE: we mask the service so the RPM can't restart it
+    # after the package gets upgraded
     - name: stop ceph mon - fqdn
       systemd:
         name: ceph-mon@{{ ansible_fqdn }}
         state: stopped
-        enabled: yes
+        enabled: no
+        masked: yes
       ignore_errors: True
       when:
         - not containerized_deployment
 
-    - name: stop ceph mgr
+    # only mask the service for mgr because it must be upgraded
+    # after ALL monitors, even when collocated
+    - name: mask the mgr service
       systemd:
         name: ceph-mgr@{{ ansible_hostname }}
-        state: stopped
-        enabled: yes
-      ignore_errors: True # if no mgr collocated with mons
+        masked: yes
       when:
-        - not containerized_deployment
+        - inventory_hostname in groups[mgr_group_name]
+          or groups[mgr_group_name] | length == 0
 
     - import_role:
         name: ceph-defaults
@@ -162,39 +169,12 @@
         name: ceph-mgr
       when: groups.get(mgr_group_name, []) | length == 0
 
-    - name: start ceph mon
-      systemd:
-        name: ceph-mon@{{ monitor_name }}
-        state: started
-        enabled: yes
-      when:
-        - not containerized_deployment
-
-    - name: start ceph mgr
-      systemd:
-        name: ceph-mgr@{{ ansible_hostname }}
-        state: started
-        enabled: yes
-      ignore_errors: True # if no mgr collocated with mons
-      when:
-        - not containerized_deployment
-
     - name: restart containerized ceph mon
       systemd:
         name: ceph-mon@{{ monitor_name }}
         state: restarted
         enabled: yes
         daemon_reload: yes
-      when:
-        - containerized_deployment
-
-    - name: restart containerized ceph mgr
-      systemd:
-        name: ceph-mgr@{{ monitor_name }}
-        state: restarted
-        enabled: yes
-        daemon_reload: yes
-      ignore_errors: True # if no mgr collocated with mons
       when:
         - containerized_deployment
 
@@ -327,7 +307,8 @@
       systemd:
         name: ceph-mgr@{{ ansible_hostname }}
         state: stopped
-        enabled: yes
+        enabled: no
+        masked: yes
       failed_when: false
       when:
         - not containerized_deployment
@@ -348,23 +329,6 @@
         name: ceph-config
     - import_role:
         name: ceph-mgr
-
-    - name: start ceph mgr
-      systemd:
-        name: ceph-mgr@{{ ansible_hostname }}
-        state: started
-        enabled: yes
-      when:
-        - not containerized_deployment
-
-    - name: restart containerized ceph mgr
-      systemd:
-        name: ceph-mgr@{{ ansible_hostname }}
-        state: restarted
-        enabled: yes
-        daemon_reload: yes
-      when:
-        - containerized_deployment
 
 
 - name: upgrade ceph osds cluster
@@ -394,7 +358,8 @@
       systemd:
         name: ceph-osd@{{ item }}
         state: stopped
-        enabled: yes
+        enabled: no
+        masked: yes
       with_items: "{{ osd_ids.stdout_lines }}"
       when:
         - not containerized_deployment
@@ -427,6 +392,7 @@
         name: ceph-osd@{{ item }}
         state: started
         enabled: yes
+        masked: no
       with_items: "{{ osd_ids.stdout_lines }}"
       when:
         - not containerized_deployment
@@ -436,6 +402,7 @@
         name: "{{ item }}"
         state: restarted
         enabled: yes
+        masked: no
         daemon_reload: yes
       with_items: "{{ osd_names.stdout_lines }}"
       when:
@@ -542,7 +509,8 @@
       systemd:
         name: ceph-mds@{{ ansible_hostname }}
         state: stopped
-        enabled: yes
+        enabled: no
+        masked: yes
       when:
         - not containerized_deployment
 
@@ -568,6 +536,7 @@
         name: ceph-mds@{{ ansible_hostname }}
         state: started
         enabled: yes
+        masked: no
       when:
         - not containerized_deployment
 
@@ -576,6 +545,7 @@
         name: ceph-mds@{{ ansible_hostname }}
         state: restarted
         enabled: yes
+        masked: no
         daemon_reload: yes
       when:
         - containerized_deployment
@@ -593,7 +563,8 @@
       systemd:
         name: ceph-radosgw@rgw.{{ ansible_hostname }}
         state: stopped
-        enabled: yes
+        enabled: no
+        masked: yes
       when:
         - not containerized_deployment
 
@@ -619,6 +590,7 @@
         name: ceph-radosgw@rgw.{{ ansible_hostname }}
         state: started
         enabled: yes
+        masked: no
       when:
         - not containerized_deployment
 
@@ -627,6 +599,7 @@
         name: ceph-radosgw@rgw.{{ ansible_hostname }}.{{ item.instance_name }}
         state: restarted
         enabled: yes
+        masked: no
         daemon_reload: yes
       with_items: "{{ rgw_instances }}"
       when:
@@ -654,7 +627,8 @@
       systemd:
         name: "ceph-rbd-mirror@rbd-mirror.{{ ansible_hostname }}"
         state: stopped
-        enabled: yes
+        enabled: no
+        masked: yes
       failed_when: false
 
     - import_role:
@@ -679,6 +653,7 @@
         name: "ceph-rbd-mirror@rbd-mirror.{{ ansible_hostname }}"
         state: started
         enabled: yes
+        masked: no
       when:
         - not containerized_deployment
 
@@ -687,6 +662,7 @@
         name: ceph-rbd-mirror@rbd-mirror.{{ ansible_hostname }}
         state: restarted
         enabled: yes
+        masked: no
         daemon_reload: yes
       when:
         - containerized_deployment
@@ -707,7 +683,8 @@
       systemd:
         name: nfs-ganesha
         state: stopped
-        enabled: yes
+        enabled: no
+        masked: yes
       failed_when: false
       when:
         - not containerized_deployment
@@ -734,6 +711,7 @@
         name: nfs-ganesha
         state: started
         enabled: yes
+        masked: no
       when:
         - not containerized_deployment
         - ceph_nfs_enable_service
@@ -743,6 +721,7 @@
         name: ceph-nfs@{{ ceph_nfs_service_suffix | default(ansible_hostname) }}
         state: restarted
         enabled: yes
+        masked: no
         daemon_reload: yes
       when:
         - ceph_nfs_enable_service
@@ -765,7 +744,8 @@
       systemd:
         name: rbd-target-gw
         state: stopped
-        enabled: yes
+        enabled: no
+        masked: yes
       failed_when: false
       when:
         - not containerized_deployment
@@ -792,6 +772,7 @@
         name: rbd-target-gw
         state: started
         enabled: yes
+        masked: no
       when:
         - not containerized_deployment
 
